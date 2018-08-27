@@ -20,17 +20,13 @@ from textworld.generator import data, user_query
 from textworld.generator.vtypes import get_new
 from textworld.logic import State, Variable, Proposition, Action
 from textworld.generator.chaining import get_failing_constraints
-from textworld.generator.game import Game, World, Quest
+from textworld.generator.game import Game, World, Quest, WorldEntity, WorldPath, WorldRoom, WorldRoomExit
 from textworld.generator.graph_networks import DIRECTIONS
 from textworld.render import visualize
 from textworld.envs.wrappers import Recorder
 
 
 class MissingPlayerError(ValueError):
-    pass
-
-
-class ExitAlreadyUsedError(ValueError):
     pass
 
 
@@ -52,243 +48,7 @@ class FailedConstraintsError(ValueError):
         msg += ", ".join(set(action.name for action in failed_constraints))
         super().__init__(msg)
 
-
-class WorldEntity:
-    """ Represents an entity in the world.
-
-    Example of entities commonly found in text-based games:
-    rooms, doors, items, etc.
-    """
-
-    def __init__(self, var: Variable, name: Optional[str] = None,
-                 desc: Optional[str] = None) -> None:
-        """
-        Args:
-            var: The underlying variable for the entity which is used
-                 by TextWorld's inference engine.
-            name: The name of the entity that will be displayed in-game.
-                  Default: generate one according the variable's type.
-            desc: The description of the entity that will be displayed
-                  when examining it in the game.
-        """
-        self.var = var
-        self._facts = []
-        self.name = name
-        self.desc = desc
-        self.content = []
-
-    @property
-    def id(self) -> str:
-        """ Unique name used internally. """
-        return self.var.name
-
-    @property
-    def type(self) -> str:
-        """ Type of this entity. """
-        return self.var.type
-
-    @property
-    def properties(self) -> List[Proposition]:
-        """
-        Properties of this object are things that refer to this object and this object alone.
-        For instance, 'closed', 'open', and 'locked' are possible properties of 'containers'.
-        """
-        return [fact for fact in self._facts if len(fact.arguments) == 1]
-
-    @property
-    def facts(self) -> List[Proposition]:
-        """ All facts related to this entity (or its children content).
-        """
-        facts = list(self._facts)
-        for entity in self.content:
-            facts += entity.facts
-
-        return facts
-
-    def add_fact(self, name: str, *entities: List["WorldEntity"]) -> None:
-        """ Adds a fact to this entity.
-
-        Args:
-            name: The name of the new fact.
-            *entities: A list of entities as arguments to the new fact.
-        """
-        args = [entity.var for entity in entities]
-        self._facts.append(Proposition(name, args))
-
-    def add_property(self, name: str) -> None:
-        """ Adds a property to this entity.
-
-        A property is a fact that only involves one entity. For instance,
-        'closed(c)', 'open(c)', and 'locked(c)' are all properties.
-
-        Args:
-            name: The name of the new property.
-
-        """
-        self.add_fact(name, self)
-
-    def add(self, *entities: List["WorldEntity"]) -> None:
-        """ Add children to this entity. """
-        if data.get_types().is_descendant_of(self.type, "r"):
-            name = "at"
-        elif data.get_types().is_descendant_of(self.type, ["c", "I"]):
-            name = "in"
-        elif data.get_types().is_descendant_of(self.type, "s"):
-            name = "on"
-        else:
-            raise ValueError("Unexpected type {}".format(self.type))
-
-        for entity in entities:
-            self.add_fact(name, entity, self)
-            self.content.append(entity)
-
-    def has_property(self, name: str) -> bool:
-        """ Determines if this object has a property with the given name.
-
-        Args:
-            The name of the property.
-
-        Example:
-            >>> from textworld import GameMaker
-            >>> M = GameMaker()
-            >>> chest = M.new(type="c", name="chest")
-            >>> chest.has_property('closed')
-            False
-            >>> chest.add_property('closed')
-            >>> chest.has_property('closed')
-            True
-        """
-        return name in [p.name for p in self.properties]
-
-    def __contains__(self, entity: "WorldEntity") -> bool:
-        """ Checks if another entity is a children of this entity.
-
-        Primarily useful for entities that allows children
-        (e.g. containers, supporters, rooms, etc).
-
-        Args:
-            entity: The entity to check if contained.
-
-        Notes:
-            An entity always contains itself.
-        """
-        if entity == self:
-            return True
-
-        for nested_entity in self.content:
-            if entity in nested_entity:
-                return True
-
-        return False
-
-
-class WorldRoom(WorldEntity):
-    """ Represents a room in the world. """
-
-    def __init__(self, *args, **kwargs):
-        """
-        Takes the same arguments as WorldEntity.
-
-        Then, creates a WorldRoomExit for each direction defined in graph_networks.DIRECTIONS, and
-        sets exits to be a dict of those names to the newly created rooms. It then sets an attribute
-        to each name.
-
-        :param args: The args to pass to WorldEntity
-        :param kwargs: The kwargs to pass to WorldEntity
-        """
-        super().__init__(*args, **kwargs)
-        self.exits = {}
-        for direction in DIRECTIONS:
-            exit = WorldRoomExit(self, direction)
-            self.exits[direction] = exit
-            setattr(self, direction, exit)
-
-
-class WorldRoomExit:
-    """ Represents an exit from a Room.
-
-    These are used to connect `WorldRoom`s to form `WorldPath`s.
-    `WorldRoomExit`s are linked to each other through their :py:attr:`dest`.
-
-    When :py:attr:`dest` is `None`, it means there is no path leading to
-    this exit yet.
-    """
-
-    def __init__(self, src: WorldRoom, direction: str, dest: Optional[WorldRoom] = None) -> None:
-        """
-        Args:
-            src: The WorldRoom that the exit is from.
-            direction: The direction the exit is in: north, east, south, and west are common.
-            dest: The WorldRoomExit that this exit links to (exits are linked to each other).
-        """
-        self.direction = direction
-        self.src = src    # WorldRoom
-        self.dest = dest  # WorldRoomExit
-
-
-class WorldPath:
-    """ Represents a path between two `WorldRoom` objects.
-
-    A `WorldPath` encapsulates the source `WorldRoom`, the source `WorldRoomExit`,
-    the destination `WorldRoom` and the destination `WorldRoom`. Optionally, a
-    linking door can also be provided.
-    """
-
-    def __init__(self, src: WorldRoom, src_exit: WorldRoomExit,
-                 dest: WorldRoom, dest_exit: WorldRoomExit,
-                 door: Optional[WorldEntity] = None) -> None:
-        """
-        Args:
-            src: The source room.
-            src_exit: The exit of the source room.
-            dest: The destination room.
-            dest_exit: The exist of the destination room.
-            door: The door between the two rooms, if any.
-        """
-        self.src = src
-        self.src_exit = src_exit
-        self.dest = dest
-        self.dest_exit = dest_exit
-        self.door = door
-        self.src.exits[self.src_exit].dest = self.dest.exits[self.dest_exit]
-        self.dest.exits[self.dest_exit].dest = self.src.exits[self.src_exit]
-
-    @property
-    def door(self) -> Optional[WorldEntity]:
-        """ The entity representing the door or `None` if there is none."""
-        return self._door
-
-    @door.setter
-    def door(self, door: WorldEntity) -> None:
-        if door is not None and not data.get_types().is_descendant_of(door.type, "d"):
-            msg = "Expecting a WorldEntity of 'door' type."
-            raise TypeError(msg)
-
-        self._door = door
-
-    @property
-    def facts(self) -> List[Proposition]:
-        """ Facts related to this path.
-
-        Returns:
-            The facts that make up this path.
-        """
-        facts = []
-        facts.append(Proposition("{}_of".format(self.src_exit), [self.dest.var, self.src.var]))
-        facts.append(Proposition("{}_of".format(self.dest_exit), [self.src.var, self.dest.var]))
-
-        if self.door is None or self.door.has_property("open"):
-            facts.append(Proposition("free", [self.src.var, self.dest.var]))
-            facts.append(Proposition("free", [self.dest.var, self.src.var]))
-
-        if self.door is not None:
-            facts.extend(self.door.facts)
-            facts.append(Proposition("link", [self.src.var, self.door.var, self.dest.var]))
-            facts.append(Proposition("link", [self.dest.var, self.door.var, self.src.var]))
-
-        return facts
-
-
+    
 class GameMaker:
     """ Stateful utility class for handcrafting text-based games.
 
@@ -302,36 +62,27 @@ class GameMaker:
         """
         Creates an empty world, with a player and an empty inventory.
         """
-        self._entities = {}
+        self._world = World()
+        # self._entities = {}
         self._quests = []
-        self.rooms = []
-        self.paths = []
-        self._types_counts = data.get_types().count(State())
-        self.player = self.new(type='P')
-        self.inventory = self.new(type='I')
+        # self.rooms = []
+        # self.paths = []
+        # self._types_counts = data.get_types().count(State())
+        # self.player = self.new(type='P')
+        # self.inventory = self.new(type='I')
         self.grammar = textworld.generator.make_grammar()
         self._game = None
-        self._distractors_facts = []
-
+        # self._distractors_facts = []
+    
     @property
-    def state(self) -> State:
-        """ Current state of the world. """
-        facts = []
-        for room in self.rooms:
-            facts += room.facts
-
-        for path in self.paths:
-            facts += path.facts
-
-        facts += self.inventory.facts
-        facts += self._distractors_facts
-
-        return State(facts)
-
+    def world(self) -> State:
+        """ World being built. """
+        return self._world
+    
     @property
-    def facts(self) -> Iterable[Proposition]:
-        """ All the facts associated to the current game state. """
-        return self.state.facts
+    def inventory(self) -> WorldEntity:
+        """ Player's inventory. """
+        return self.world.inventory
 
     def add_fact(self, name: str, *entities: List[WorldEntity]) -> None:
         """ Adds a fact.
@@ -354,7 +105,7 @@ class GameMaker:
         Returns:
             The newly created door.
         """
-        path.door = self.new(type='d', name=name, desc=desc)
+        path.door = self.world.new(type='d', name=name, desc=desc)
         return path.door
 
     def new_room(self, name: Optional[str] = None,
@@ -368,7 +119,7 @@ class GameMaker:
         Returns:
             The newly created room entity.
         """
-        return self.new(type='r', name=name, desc=desc)
+        return self.world.new(type='r', name=name, desc=desc)
 
     def new(self, type: str, name: Optional[str] = None,
             desc: Optional[str] = None) -> Union[WorldEntity, WorldRoom]:
@@ -385,19 +136,7 @@ class GameMaker:
             * If the `type` is `'r'`, then a `WorldRoom` object is returned.
             * Otherwise, a `WorldEntity` is returned.
         """
-        var_id = type
-        if not data.get_types().is_constant(type):
-            var_id = get_new(type, self._types_counts)
-
-        var = Variable(var_id, type)
-        if type == "r":
-            entity = WorldRoom(var, name, desc)
-            self.rooms.append(entity)
-        else:
-            entity = WorldEntity(var, name, desc)
-
-        self._entities[var_id] = entity
-        return entity
+        return self.world.new(type, name, desc)
 
     def findall(self, type: str) -> List[WorldEntity]:
         """ Gets all entities of the given type.
@@ -409,7 +148,7 @@ class GameMaker:
             All entities which match.
         """
         entities = []
-        for entity in self._entities.values():
+        for entity in self.world._entities.values():
             if entity.type == type:
                 entities.append(entity)
 
@@ -428,10 +167,10 @@ class GameMaker:
         Raises:
             PlayerAlreadySetError: If the player has already been set.
         """
-        if self.player in self:
+        if self.world.player in self.world:
             raise PlayerAlreadySetError()
 
-        room.add(self.player)
+        room.add(self.world.player)
 
     def connect(self, exit1: WorldRoomExit, exit2: WorldRoomExit) -> WorldPath:
         """ Connect two rooms using their exits.
@@ -443,31 +182,17 @@ class GameMaker:
         Returns:
             The path created by the link between two rooms, with no door.
         """
-        if exit1.dest is not None:
-            msg = "{}.{} is already linked to {}.{}"
-            msg = msg.format(exit1.src, exit1.direction,
-                             exit1.dest.src, exit1.dest.direction)
-            raise ExitAlreadyUsedError(msg)
+        return self.world.connect(exit1, exit2)
 
-        if exit2.dest is not None:
-            msg = "{}.{} is already linked to {}.{}"
-            msg = msg.format(exit2.src, exit2.direction,
-                             exit2.dest.src, exit2.dest.direction)
-            raise ExitAlreadyUsedError(msg)
+    # def add_distractors(self, nb_distractors: int) -> None:
+    #     """ Adds a number of distractors - random objects.
 
-        path = WorldPath(exit1.src, exit1.direction, exit2.src, exit2.direction)
-        self.paths.append(path)
-        return path
-
-    def add_distractors(self, nb_distractors: int) -> None:
-        """ Adds a number of distractors - random objects.
-
-        Args:
-            nb_distractors: The number of distractors to add.
-        """
-        self._distractors_facts = []
-        world = World.from_facts(self.facts)
-        self._distractors_facts = world.populate(nb_distractors)
+    #     Args:
+    #         nb_distractors: The number of distractors to add.
+    #     """
+    #     self._distractors_facts = []
+    #     world = World.from_facts(self.facts)
+    #     self._distractors_facts = world.populate(nb_distractors)
 
     def new_quest(self, max_length: int) -> Quest:
         """ Generates a random quest for the game.
@@ -480,7 +205,7 @@ class GameMaker:
         Returns:
             The generated quest.
         """
-        world = World.from_facts(self.facts)
+        world = World.from_facts(self.world.facts)
         self._quests = [textworld.generator.make_quest(world, max_length)]
 
         # Calling build will generate the description for the quest.
@@ -600,11 +325,11 @@ class GameMaker:
         all constraints (defined in the :ref:`knowledge base <KB>`)
         are respected.
         """
-        if self.player not in self:
+        if self.world.player not in self.world:
             msg = "Player position has not been specified. Use 'M.set_player(room)'."
             raise MissingPlayerError(msg)
 
-        failed_constraints = get_failing_constraints(self.state)
+        failed_constraints = get_failing_constraints(self.world.state)
         if len(failed_constraints) > 0:
             raise FailedConstraintsError(failed_constraints)
 
@@ -625,14 +350,14 @@ class GameMaker:
         if validate:
             self.validate()  # Validate the state of the world.
 
-        world = World.from_facts(self.facts)
-        game = Game(world, quests=self._quests)
+        #world = World.from_facts(self.world.facts)
+        game = Game(self.world, quests=self._quests)
 
         # Keep names and descriptions that were manually provided.
         for k, var_infos in game.infos.items():
-            if k in self._entities:
-                var_infos.name = self._entities[k].name
-                var_infos.desc = self._entities[k].desc
+            if k in self.world._entities:
+                var_infos.name = self.world._entities[k].name
+                var_infos.desc = self.world._entities[k].desc
 
             # If we can, reuse information generated during last build.
             if self._game is not None and k in self._game.infos:
@@ -669,25 +394,6 @@ class GameMaker:
         game_file = textworld.generator.compile_game(self._working_game, game_name, force_recompile=True, games_folder=games_folder)
         return game_file
 
-    def __contains__(self, entity) -> bool:
-        """
-        Checks if the given entity exists in the world
-        :param entity: The entity to check
-        :return: True if the entity is in the world; otherwise False
-        """
-        for room in self.rooms:
-            if entity in room:
-                return True
-
-        for path in self.paths:
-            if entity == path.door:
-                return True
-
-        if entity in self.inventory:
-            return True
-
-        return False
-
     def render(self, interactive: bool = False):
         """
         Returns a visual representation of the world.
@@ -699,3 +405,4 @@ class GameMaker:
         game = self.build(validate=False)
         game.change_grammar(self.grammar)  # Generate missing object names.
         return visualize(game, interactive=interactive)
+

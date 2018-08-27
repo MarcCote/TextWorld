@@ -95,23 +95,6 @@ def make_world(world_size, nb_objects=0, rngs=None):
     return world
 
 
-def make_world_with(rooms, rng=None):
-    """ Make a world that contains the given rooms.
-
-    Parameters
-    ----------
-    rooms : list of textworld.logic.Variable
-        Rooms in the map. Variables must have type 'r'.
-    """
-    map = make_map(n_rooms=len(rooms), rng=rng)
-    for (n, d), room in zip(map.nodes.items(), rooms):
-        d["name"] = room.name
-
-    world = World.from_map(map)
-    world.set_player_room()
-    return world
-
-
 def make_quest(world, quest_length, rng=None, rules_per_depth={}, backward=False):
     state = world
     if hasattr(world, "state"):

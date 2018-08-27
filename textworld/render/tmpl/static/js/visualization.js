@@ -89,30 +89,14 @@ function getIcon(item) {
     return template_path + '/static/images/TextWorldIcons_' + imageFile;
 }
 
-
-const opposite = (d) => {
-    switch(d) {
-    case 's':
-        return 'n';
-    case 'n':
-        return 's';
-    case 'e':
-        return 'w';
-    case 'w':
-        return 'e';
-    default:
-        return null;
-    }
-};
-
 // Helpers for finding starting/ending points based on direction
-function calcDirection(connection, unit) {
-    // WE NEED STATE OBJECT HERE
+function calcDirection(connection, flip) {
+    // WE NEED STATE OBJECT HERE    
     const source = state.rooms.filter((r) => r.name == connection.source)[0];
     const dest = state.rooms.filter((r) => r.name == connection.target)[0];
     let diff = [dest.position[0] - source.position[0], dest.position[1] - source.position[1]];
-    if (unit == 'dest') {
-        diff = [source.position[0] - dest.position[0], source.position[1] - dest.position[1]];
+    if (flip == 'dest') {
+        diff = [-diff[0], -diff[1]];
     }
     if (diff[0] > 0) {
         return 'e'
@@ -174,7 +158,7 @@ function appendItemLabel(parent, p, n) {
         return item.contents.length > 0 || clicked[item.name];
     }
     const rows = parent.selectAll('item')
-        .data(p.data.items).enter()
+        .data(p.data.contents).enter()
         .append('tr')
         .attr('class', 'item')
         .attr('bgcolor', (item) => {
@@ -201,11 +185,7 @@ function appendItemLabel(parent, p, n) {
         .attr('class', 'item-span')
         .text((item) => {
             let description;
-            if (!item.name) {
-                description = item.type + item._infos;
-            } else {
-                description = item.name + item._infos;
-            }
+            description = item.name + item.infos;
             return capitalize(description);
         });
 
@@ -231,7 +211,7 @@ function appendItemLabel(parent, p, n) {
 
     col.each(function(q, i) {
         if (hasItems(q)) {
-            var childData = {data: {items: q.contents}};
+            var childData = {data: {contents: q.contents}};
             const childTable = d3.select(this).append('table').attr('class', 'child-table');
             $(this).css('padding-bottom', 0)
             appendItemLabel(childTable, childData, i);
@@ -281,7 +261,7 @@ function renderRooms(room_data, g) {
     var room_table = room_wrapper.append('table')
         .attr('class', (d) => {
             let className = 'table room-table table-hover';
-            for (item of d.data.items) {
+            for (item of d.data.contents) {
                 if (item.type == 'P') {
                     className += ' current-room';
                 }
@@ -295,7 +275,7 @@ function renderRooms(room_data, g) {
     var room_head = room_table.append('thead')
         .attr('class', (d) => {
             let className = 'thead-room';
-            for (item of d.data.items) {
+            for (item of d.data.contents) {
                 if (item.type == 'P') {
                     className += ' current-room-head';
                 }
@@ -339,24 +319,10 @@ function renderRooms(room_data, g) {
     return { room_g: nnodes, room_data: room_data };
 }
 
-
-function getDir(connection) {
-    // this doesn't work with ambiguities in direction (special triangle case)
-    const source = state.rooms.filter((r) => r.name == connection.src)[0];
-    const dest = state.rooms.filter((r) => r.name == connection.dest)[0];
-    let dir = '';
-    for (a of dest.base_room.attributes) {
-        if (a.arguments[0].name == source.base_room.name) {
-            dir = a.name;
-        }
-    }
-    return dir;
-}
-
 function isImpossibleConnection(connection, room_data) {
     const source = room_data.find((d) => d.data.name == connection.src);
     const destination = room_data.find((d) => d.data.name == connection.dest);
-    const dir = getDir(connection);
+    const dir = calcDirection(connection, 'source');
     return false
 }
 
@@ -472,7 +438,7 @@ function renderEdges(edge_data, room_data, room_g, g) {
 
 function renderInventory(inventory) {
     // Here we initialize the data for our nodes
-    const inventory_node = [{x: 0, y:0, name: 'inventory', data: {items: inventory}}];
+    const inventory_node = [{x: 0, y:0, name: 'inventory', data: {contents: inventory.contents}}];
 
     // we must render the inventory first to position nodes around that
     const inventory_table = d3.select('div.inventory-container')
@@ -527,10 +493,10 @@ const Graph = (function(window, d3, rerendered) {
 
         const edge_data = state.connections.map(function(connection) {
             return {
-                source: connection.src,
-                target: connection.dest,
+                source: connection.source,
+                target: connection.target,
                 door: connection.door,
-                dir: getDir(connection),
+                dir: calcDirection(connection, 'source'),
                 impossible: isImpossibleConnection(connection, room_data)
             };
         });
@@ -553,25 +519,8 @@ const Graph = (function(window, d3, rerendered) {
 
         svg.call(zoom);
 
-        // we check if it's our first rendering,
-        // if it is we translate to center on the player.
+        // On the first rendering adjust zoom.
         if (!rerendered) {
-            const base = room_g.filter((d) => {
-                for (item of d.data.items) {
-                    if (item.type == "P") {
-                        return true;
-                    }
-                }
-            });
-
-            // for centering on 'P'
-            // const translate = d3.select(base.node()).attr("transform").split('(')[1].split(')')[0].split(',');
-            // const svgBBox = svg.node().getBoundingClientRect();
-            // const x = svgBBox.width / 2 - parseInt(translate[0]) - 100;
-            // const y = svgBBox.height / 2 - parseInt(translate[1]) - 100;
-            // svg.call(zoom.transform, d3.zoomIdentity.translate(x, y));
-
-
             const width_ratio = svg.node().getBoundingClientRect().width / (g.node().getBoundingClientRect().width + 100);
             const height_ratio = svg.node().getBoundingClientRect().height / (g.node().getBoundingClientRect().height + 100);
             const ratio = width_ratio < height_ratio ? width_ratio : height_ratio;
@@ -587,18 +536,6 @@ const Graph = (function(window, d3, rerendered) {
             zoom.translateBy(svg, childOffset.left / ratio, childOffset.top / ratio)
             rerendered = true
         }
-
-        // Currently not used - chrome doesn't support this.
-        // const tableNode = $('.table-scroll');
-        // tableNode.mouseenter(function() {
-        //     if (this.scrollHeight !== this.clientHeight) {
-        //         svg.on('.zoom', null);
-        //     }
-        // });
-        //
-        // tableNode.mouseleave(function() {
-        //     svg.call(zoom);
-        // });
     }
 
     return {

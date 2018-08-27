@@ -64,8 +64,14 @@ def assign_name_to_object(obj, grammar, game_infos, include_adj):
         return  # The name was already set.
 
     # Check if the object should match another one (i.e. same adjective).
-    if obj.matching_entity_id is not None:
-        other_obj_infos = game_infos[obj.matching_entity_id]
+    match_facts = [f for f in obj._facts if f.name == "match"]
+    if match_facts:
+        assert len(match_facts) == 1
+        match_fact = match_facts[0]
+        other_obj_infos = game_infos[match_fact.arguments[-1].name]
+
+    # if obj.matching_entity_id is not None:
+        # other_obj_infos = game_infos[obj.matching_entity_id]
         success = assign_new_matching_names(obj_infos, other_obj_infos, grammar, include_adj, exclude)
         if success:
             return
@@ -109,21 +115,21 @@ def generate_text_from_grammar(game, grammar: Grammar):
     blend_descriptions = grammar.flags.get("blend_descriptions", False)
     ambiguous_instructions = grammar.flags.get("ambiguous_instructions", False)
 
-    # Assign a specific room type and name to our rooms
+    # Assign a specific room type and name to our rooms.
     for room in game.world.rooms:
-        # First, generate a unique roomtype and name from the grammar
+        # First, generate a unique roomtype and name from the grammar.
         if game.infos[room.id].room_type is None and grammar.has_tag("#room_type#"):
             game.infos[room.id].room_type = grammar.expand("#room_type#")
 
         assign_name_to_object(room, grammar, game.infos, include_adj)
 
-        # Next, assure objects contained in a room must have the same room type
-        for obj in game.world.get_all_objects_in(room):
+        # Next, assure objects contained in a room have the same room type.
+        for obj in room.contents:
             if game.infos[obj.id].room_type is None:
                 game.infos[obj.id].room_type = game.infos[room.id].room_type
 
     # Objects in inventory can be of any room type.
-    for obj in game.world.get_objects_in_inventory():
+    for obj in game.world.inventory.contents:
         if game.infos[obj.id].room_type is None and grammar.has_tag("#room_type#"):
             game.infos[obj.id].room_type = grammar.expand("#room_type#")
 
@@ -166,7 +172,7 @@ def assign_description_to_room(room, game, grammar, blend_descriptions):
     room_desc = expand_clean_replace("#dec#\n\n", grammar, room, game.infos)
 
     # Convert the objects into groupings based on adj/noun/type
-    objs = [o for o in room.content if data.get_types().is_descendant_of(o.type, data.get_types().CLASS_HOLDER)]
+    objs = [o for o in room.contents if data.get_types().is_descendant_of(o.type, data.get_types().CLASS_HOLDER)]
     groups = OrderedDict()
     groups["adj"] = OrderedDict()
     groups["noun"] = OrderedDict()
@@ -236,13 +242,16 @@ def assign_description_to_room(room, game, grammar, blend_descriptions):
     exits_with_closed_door = []
     exits_without_door = []
     for dir_ in sorted(room.exits.keys()):
-        if dir_ in room.doors:
-            door_obj = room.doors[dir_]
-            attributes_names = [attr.name for attr in door_obj.get_attributes()]
+        path = room.exits[dir_].path
+        if path is None:
+            continue
+
+        if path.door is not None:
+            attributes_names = [attr.name for attr in path.door.properties]
             if "open" in attributes_names:
-                exits_with_open_door.append((dir_, door_obj))
+                exits_with_open_door.append((dir_, path.door))
             else:
-                exits_with_closed_door.append((dir_, door_obj))
+                exits_with_closed_door.append((dir_, path.door))
         else:
             exits_without_door.append(dir_)
 

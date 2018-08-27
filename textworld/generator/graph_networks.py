@@ -3,10 +3,11 @@
 
 
 import itertools
+from collections import OrderedDict, defaultdict
+from typing import List, Tuple, Hashable, Dict
+
 import numpy as np
 import networkx as nx
-from collections import OrderedDict
-
 
 DIRECTIONS = ["north", "south", "east", "west"]
 
@@ -15,6 +16,19 @@ directions = OrderedDict([((0, 1), 'north'),
                           ((0, -1), 'south'),
                           ((1, 0), 'east')])
 
+RELATIVE_POSITIONS = {
+    'north': np.array((0, 1)),
+    'south': np.array((0, -1)),
+    'east': np.array((1, 0)),
+    'west': np.array((-1, 0)),
+}
+
+OPPOSITE_RELATIONS = {
+    "north": "south", 
+    "south": "north",
+    "east": "west",
+    "west": "east",
+}
 
 def reverse_direction(direction):
     index = DIRECTIONS.index(direction)
@@ -167,3 +181,24 @@ def shortest_path(G, source, target):
     for i in range(len(path) - 1):
             d.append(direction(path[i], path[i+1]))
     return d
+
+
+class InvalidConstraint(NameError):
+    pass
+
+
+def relative_2d_constraint_layout(G: nx.Graph, constraints: List[Tuple[Hashable, str, Hashable]]) -> Dict[Hashable, Tuple[int, int]]:
+    """ Position nodes respecting provided relative 2D contraints.
+      
+    Arguments:
+        G: Graph containing the nodes to position nodes.
+        constraints: List of relative positioning contraints. Each constraint 
+                     has the following format: (node1, relation, node2) where 
+                     relation is either 'north', 'south', 'east' or 'west'. 
+                     For instance, ('A', 'north', 'B') would mean node 'A' 
+                     should be aligned above (north of) node 'B'. 
+
+    Returns:
+        pos: Node positions.
+    """
+    pass

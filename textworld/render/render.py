@@ -16,297 +16,109 @@ from textworld.logic import Variable, Proposition, Action
 from textworld.envs.glulx.git_glulx_ml import GlulxGameState
 from textworld.logic import State
 from textworld.generator import World, Game
+from textworld.generator.graph_networks import relative_2d_constraint_layout
 from textworld.utils import maybe_mkdir, get_webdriver
 
 from textworld.generator.game import EntityInfo
 from textworld.generator import data
 
 
-XSCALE, YSCALE = 6, 3
-
-
-# noinspection PyShadowingBuiltins
-class GraphItem(object):
-    def __init__(self, type, name):
-        self.type = type
-        self.name = name
-        self.contents = []
-        self.ocl = ''
-        self.predicates = []
-        self._infos = ""
-        self.highlight = False
-        self.portable = False
-
-    @property
-    def infos(self):
-        if self._infos == "" and len(self.predicates) > 0:
-            return ": ({})".format(", ".join(self.predicates))
-
-        return self._infos
-
-    @infos.setter
-    def infos(self, value):
-        self._infos = value
-
-    def add_content(self, content):
-        self.contents.append(content)
-
-    def set_open_closed_locked(self, status):
-        self.ocl = status
-
-    def add_unknown_predicate(self, predicate: Proposition):
-        self.predicates.append(str(predicate))
-
-    def to_dict(self):
-        res = self.__dict__
-        res["contents"] = [item.to_dict() for item in res["contents"]]
-        return res
-
-    def get_max_depth(self):
-        """
-        Returns the maximum nest depth of this plus all children. A container with no items has 1 depth,
-        a container containing one item has 2 depth, a container containing a container which contains an item
-        has 3 depth, and so on.
-        :return: maximum nest depth
-        """
-        if len(self.contents) == 0:
-            return 1
-        return 1 + max([content.get_max_depth() for content in self.contents])
-
-
-class GraphRoom(object):
-    def __init__(self, name: str, base_room):
-        self.name = name
-        self.base_room = base_room
-        self.items = []
-        self.position = None
-        self.scale = 4
-
-    def position_string(self) -> str:
-        return '%s,%s!' % (self.position[0] * XSCALE, self.position[1] * YSCALE)
-
-    def add_item(self, item) -> None:
-        self.items.append(item)
-
-
-def load_state_from_game_state(game_state: GlulxGameState, format: str = 'png', limit_player_view: bool = False) -> dict:
+def load_state_from_game_state(game_state: GlulxGameState) -> dict:
     """
     Generates serialization of game state.
 
-    :param game_state: The current game state to visualize.
-    :param format: The graph output format (png, svg, pdf, ...)
-    :param limit_player_view: Whether to limit the player's view. Default: False.
-    :return: The graph generated from this World
+    Args:
+        game_state: The current game state to visualize.
+    
+    Returns:
+        A JSON serializable object ready to be rendered.
     """
     game_infos = game_state.game_infos
     game_infos["objective"] = game_state.objective
     last_action = game_state.action
+
     # Create a world from the current state's facts.
     world = World.from_facts(game_state.state.facts)
-    return load_state(world, game_infos, last_action, format, limit_player_view)
+    return load_state(world, game_infos, last_action)
 
 
-def temp_viz(nodes, edges, pos, color=[]):
-    nodes = [n for n in nodes if n in pos]
-    edges = [e for e in edges if e[0] in pos and e[1] in pos]
+def load_state(world: World, game_infos: Optional[Dict[str, EntityInfo]] = None, action: Optional[Action] = None) -> dict:    
+    """
+    Generates serialization of a world.
 
-    import matplotlib.pyplot as plt
+    Args:
+        world: The current state of the world to visualize.
+        game_infos: The mapping needed to get objects names.
+        action: If provided, highlight the world changes made by that action.
+    
+    Returns:
+        A JSON serializable object ready to be rendered.
+    """
+    room = world.player_room or world.rooms[0]
+
     G = nx.Graph()
-    G.add_nodes_from(nodes)
-    G.add_edges_from(edges)
+    constraints = []
+    G.add_nodes_from(room.id for room in world.rooms)
 
-    nx.draw(G, pos)
-    for c in color:
-        if c in nodes:
-            nx.draw_networkx_nodes(G, pos,
-                                   nodelist=[c],
-                                   node_color='b',
-                                   node_size=500,
-                                   alpha=0.8)
-    plt.show()
+    def is_positioning_fact(proposition: Proposition):
+        return proposition.name in ["north_of", "south_of", "east_of", "west_of"]
 
-# create state object from world and game_info
-def load_state(world: World, game_infos: Optional[Dict[str, EntityInfo]] = None, action: Optional[Action] = None, format: str = 'png', limit_player_view: bool = False) -> dict:
-    """
-    Generates serialization of game state.
+    positioning_facts = [fact for fact in world.facts if is_positioning_fact(fact)]
+    for fact in positioning_facts:
+        G.add_edge(fact.arguments[0].name, fact.arguments[1].name)
+        constraints.append((fact.arguments[0].name, fact.name[:-3], fact.arguments[1].name))
 
-    :param world: The current state of the world to visualize.
-    :param game_infos: The mapping needed to get objects names.
-    :param action: If provided, highlight the world changes made by that action.
-    :param format: The graph output format (gv, svg, png...)
-    :param limit_player_view: Whether to limit the player's view (defaults to false)
-    :return: The graph generated from this World
-    """
-
-    if world.player_room is None:
-        room = world.rooms[0]
-    else:
-        room = world.player_room
-
-    edges = []
-    nodes = sorted([room.name for room in world.rooms])
-    pos = {room.name: (0, 0)}
-
-    def used_pos():
-        pos_along_edges = []
-        for e in edges:
-            A, B = pos[e[0]], pos[e[1]]
-            if A[0] == B[0]:  # Y-axis edge.
-                for i in range(A[1], B[1], np.sign(B[1] - A[1])):
-                    pos_along_edges.append((A[0], i))
-            else:  # X-axis edge.
-                for i in range(A[0], B[0], np.sign(B[0] - A[0])):
-                    pos_along_edges.append((i, A[1]))
-
-        return list(pos.values()) + pos_along_edges
-
-    openset = [room]
-    closedset = set()
-
-    # temp_viz(nodes, edges, pos, color=[world.player_room.name])
-    while len(openset) > 0:
-        room = openset.pop(0)
-        closedset.add(room)
-
-        for exit, target in room.exits.items():
-            if target in openset or target in closedset:
-                edges.append((room.name, target.name, room.doors.get(exit)))
-                continue
-
-            openset.append(target)
-
-            src_pos = np.array(pos[room.name])
-            if exit == "north":
-                target_pos = tuple(src_pos + (0, 1))
-                if target_pos in used_pos():
-                    for n, p in pos.items():
-                        if p[1] <= src_pos[1]:
-                            pos[n] = (p[0], p[1] - 1)
-
-                pos[target.name] = (pos[room.name][0], pos[room.name][1] + 1)
-
-            elif exit == "south":
-                target_pos = tuple(src_pos + (0, -1))
-                if target_pos in used_pos():
-                    for n, p in pos.items():
-                        if p[1] >= src_pos[1]:
-                            pos[n] = (p[0], p[1] + 1)
-
-                pos[target.name] = (pos[room.name][0], pos[room.name][1] - 1)
-
-            elif exit == "east":
-                target_pos = tuple(src_pos + (1, 0))
-                if target_pos in used_pos():
-                    for n, p in pos.items():
-                        if p[0] <= src_pos[0]:
-                            pos[n] = (p[0] - 1, p[1])
-
-                pos[target.name] = (pos[room.name][0] + 1, pos[room.name][1])
-
-            elif exit == "west":
-                target_pos = tuple(src_pos + (-1, 0))
-                if target_pos in used_pos():
-                    for n, p in pos.items():
-                        if p[0] >= src_pos[0]:
-                            pos[n] = (p[0] + 1, p[1])
-
-                pos[target.name] = (pos[room.name][0] - 1, pos[room.name][1])
-
-            edges.append((room.name, target.name, room.doors.get(exit)))
-            # temp_viz(nodes, edges, pos, color=[world.player_room.name])
-
-    pos = {game_infos[k].name: v for k, v in pos.items()}
-
-    rooms = {}
-    player_room = world.player_room
-    if game_infos is None:
-        new_game = Game(world, [])
-        game_infos = new_game.infos
-        game_infos["objective"] = new_game.quests[0].desc
-        for k, v in game_infos.items():
-            if v.name is None:
-                v.name = k
-
-    for room in world.rooms:
-        rooms[room.id] = GraphRoom(game_infos[room.id].name, room)
+    pos = relative_2d_constraint_layout(G, constraints)
+    #pos = {game_infos[k].name: v for k, v in pos.items()}
 
     result = {}
     # Objective
-    if "objective" in game_infos:
-        result["objective"] = game_infos["objective"]
+    # if "objective" in game_infos:
+    #     result["objective"] = game_infos["objective"]
 
-    # Objects
-    all_items = {}
-    inventory_items = []
-    objects = world.objects
-    # if limit_player_view:
-    #     objects = world.get_visible_objects_in(world.player_room)
-    #     objects += world.get_objects_in_inventory()
+    world_data = world.serialize()
+    result["inventory"] = world_data["inventory"]
+    result["rooms"] = world_data["rooms"]
+    for room in result["rooms"]:
+        room["position"] = pos[room["id"]]
+        
 
-    # add all items first, in case properties are "out of order"
-    for obj in objects:
-        cur_item = GraphItem(obj.type, game_infos[obj.id].name)
-        cur_item.portable = data.get_types().is_descendant_of(cur_item.type, "o")
-        all_items[obj.id] = cur_item
+    def _get_displayed_name_from_id(entity_id, game_infos):
+        if entity_id in game_infos and game_infos[entity_id].name is not None:
+            return game_infos[entity_id].name
 
-    for obj in sorted(objects, key=lambda obj: obj.name):
-        cur_item = all_items[obj.id]
-        for attribute in obj.get_attributes():
-            if action and attribute in action.added:
-                cur_item.highlight = True
-
-            if attribute.name == 'in':
-                # add object to inventory
-                if attribute.arguments[-1].type == 'I':
-                    inventory_items.append(cur_item)
-                elif attribute.arguments[0].name == obj.id:
-                    # add object to containers if same object
-                    all_items[attribute.arguments[1].name].add_content(cur_item)
-                else:
-                    print('DEBUG: Skipping attribute %s for object %s' % (attribute, obj.id))
-
-            elif attribute.name == 'at':
-                # add object to room
-                if attribute.arguments[-1].type == 'r':
-                    rooms[attribute.arguments[1].name].add_item(cur_item)
-            elif attribute.name == 'on':
-                # add object to supporters
-                all_items[attribute.arguments[1].name].add_content(cur_item)
-            elif attribute.name == 'open':
-                cur_item.set_open_closed_locked('open')
-            elif attribute.name == 'closed':
-                cur_item.set_open_closed_locked('closed')
-            elif attribute.name == 'locked':
-                cur_item.set_open_closed_locked('locked')
-                if not limit_player_view:
-                    cur_item.infos = " (locked)"
-            elif attribute.name == 'match':
-                if not limit_player_view:
-                    cur_item.infos = " (for {})".format(game_infos[attribute.arguments[-1].name].name)
-            else:
-                cur_item.add_unknown_predicate(attribute)
-
-    for room in rooms.values():
-        room.position = pos[room.name]
-
-    result["rooms"] = []
-    for room in rooms.values():
-        room.items = [item.to_dict() for item in room.items]
-        temp = room.base_room.serialize()
-        temp["attributes"] = [a.serialize() for a in room.base_room.get_attributes()]
-        room.base_room = temp
-        result["rooms"].append(room.__dict__)
+        return entity_id
 
 
-    def _get_door(door):
-        if door is None:
-            return None
+    def _get_displayed_name(entity, game_infos):
+        return _get_displayed_name_from_id(entity["id"], game_infos)
 
-        return all_items[door.name].__dict__
 
-    result["connections"] = [{"src": game_infos[e[0]].name, "dest": game_infos[e[1]].name, 'door': _get_door(e[2])} for e in edges]
-    result["inventory"] = [inv.__dict__ for inv in inventory_items]
+    # Use entity names from game_infos.
+    entities = list(result["rooms"]) + [result["inventory"]]
+    while len(entities) > 0:
+        entity = entities.pop()
+        entities += entity["contents"]
+        entity["name"] = _get_displayed_name(entity, game_infos)
 
+        entity["portable"] = data.get_types().is_descendant_of(entity["type"], "o")
+
+        entity["infos"] = ""
+        for fact in entity["facts"]:
+            if fact["name"] == "match":
+                entity["infos"] += " (for {})".format(_get_displayed_name_from_id(fact["arguments"][-1]["name"], game_infos))
+
+    def _get_door(edge):
+        for fact in world.facts:
+            if fact.name != "link":
+                continue
+            
+            if fact.arguments[0].name == edge[0] and fact.arguments[-1].name == edge[1]:
+                return [obj.serialize() for obj in world.objects if obj.id == fact.arguments[1].name][0]
+        
+        return None
+
+    result["connections"] = [{"source": game_infos[e[0]].name, "target": game_infos[e[1]].name, 'door': _get_door(e)} for e in G.edges]
     return result
 
 
