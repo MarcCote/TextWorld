@@ -2,6 +2,7 @@
 # Licensed under the MIT license.
 
 
+import itertools
 from collections import Counter, defaultdict, deque
 from functools import total_ordering, lru_cache
 from tatsu.model import NodeWalker
@@ -130,7 +131,11 @@ class _ModelConverter(NodeWalker):
         return self._walk_variable_ish(node, Placeholder)
 
     def walk_PredicateNode(self, node):
-        return Predicate(node.name, self.walk(node.parameters))
+        pred = Predicate(node.name.lstrip("!"), self.walk(node.parameters))
+        if node.name.startswith("!"):
+            return pred.negate()
+
+        return pred
 
     def walk_RuleNode(self, node):
         return self._walk_action_ish(node, Rule)
@@ -199,6 +204,63 @@ class _ModelConverter(NodeWalker):
 
     def walk_DocumentNode(self, node):
         self.walk(node.types)
+
+    def walk_ExpressionNode(self, node):
+        return self.walk(node.expression)
+
+    def walk_ConjunctionNode(self, node):
+        return And(self.walk(node.expressions))
+
+    def walk_DisjunctionNode(self, node):
+        return Or(self.walk(node.expressions))
+
+
+class Or(frozenset):
+
+    def __str__(self):
+        return self.display()
+
+    def display(self, indent=""):
+        return "(or " + "\n" + "\n".join(indent + "  " + (str(e) if isinstance(e, Predicate) else e.display(indent + "  ")) for e in self) + ")"
+
+
+class And(frozenset):
+
+    def __str__(self):
+        return self.display()
+
+    def display(self, indent=""):
+        return "(and " + "\n" + "\n".join(indent + "  " + (str(e) if isinstance(e, Predicate) else e.display(indent + "  ")) for e in self) + ")"
+
+
+def dnf(expr):
+    """Normalize a boolean expression to its DNF.
+
+    Expr can be an element, it this case it returns Or({And({element})}).
+    Expr can be an Or(...) / And(...) expressions, in which cases it returns also a disjunctive normalised form (removing identical elements)
+
+    assert dnf(And((Or((4, 5, 1)), Or((1, 2)), 7, 7))) == Or(
+        (
+            And((2, 5, 7)),
+            And((1, 5, 7)),
+            And((1, 2, 7)),
+            And((1, 7)),
+            And((2, 4, 7)),
+            And((1, 4, 7)),
+        )
+    )
+    """
+
+    if not isinstance(expr, (Or, And)):
+        result = Or((And((expr,)),))
+    elif isinstance(expr, Or):
+        result = Or(se for e in expr for se in dnf(e))
+    elif isinstance(expr, And):
+        total = []
+        for c in itertools.product(*[dnf(e) for e in expr]):
+            total.append(And(se for e in c for se in e))
+        result = Or(total)
+    return result
 
 
 _PARSER = GameLogicParser(semantics=GameLogicModelBuilderSemantics(), parseinfo=True)
@@ -604,7 +666,7 @@ PropositionTracker = memento_factory(
     lambda cls, args, kwargs: (
         cls,
         kwargs.get("name", args[0] if len(args) >= 1 else None),
-        tuple(v.name for v in kwargs.get("arguments", args[1] if len(args) == 2 else []))
+        tuple((v.name, v.type) for v in kwargs.get("arguments", args[1] if len(args) == 2 else []))
     )
 )
 
@@ -692,6 +754,16 @@ class Proposition(with_metaclass(PropositionTracker, object)):
         name = data["name"]
         args = [Variable.deserialize(arg) for arg in data["arguments"]]
         return cls(name, args)
+
+    def negate(self) -> "Proposition":
+        if self.is_negation:
+            return Proposition(self.name.split("not_", 1)[1], self.arguments)
+
+        return Proposition("not_" + self.name, self.arguments)
+
+    @property
+    def is_negation(self) -> bool:
+        return self.name.startswith("not_")
 
 
 @total_ordering
@@ -900,6 +972,24 @@ class Predicate:
         else:
             return {ph: var for ph, var in zip(self.parameters, proposition.arguments)}
 
+    def negate(self) -> "Predicate":
+        if self.is_negation:
+            return Predicate(self.name.split("not_", 1)[1], self.parameters)
+
+        return Predicate("not_" + self.name, self.parameters)
+
+    @property
+    def is_negation(self) -> bool:
+        return self.name.startswith("not_")
+
+    @property
+    def universal(self) -> bool:
+        return False
+
+    @property
+    def existential(self) -> bool:
+        return False
+
 
 class Alias:
     """
@@ -947,6 +1037,8 @@ class Action:
         """
 
         self.name = name
+        self.mapping = {}
+        self.feedback_rule = None
         self.command_template = None
         self.reverse_name = None
         self.reverse_command_template = None
@@ -1086,6 +1178,7 @@ class Rule:
         """
 
         self.name = name
+        self.feedback_rule = None
         self.command_template = None
         self.reverse_rule = None
         self._cache = {}
@@ -1096,6 +1189,20 @@ class Rule:
         self._post_set = frozenset(self.postconditions)
 
         self.placeholders = tuple(uniquify(ph for pred in self.all_predicates for ph in pred.parameters))
+
+    @property
+    def added(self) -> Collection[Predicate]:
+        """
+        All the new predicates being introduced by this rule.
+        """
+        return self._post_set - self._pre_set
+
+    @property
+    def removed(self) -> Collection[Predicate]:
+        """
+        All the old predicates being removed by this rule.
+        """
+        return self._pre_set - self._post_set
 
     @property
     def all_predicates(self) -> Iterable[Predicate]:
@@ -1199,8 +1306,9 @@ class Rule:
         pre_inst = [pred.instantiate(mapping) for pred in self.preconditions]
         post_inst = [pred.instantiate(mapping) for pred in self.postconditions]
         action = Action(self.name, pre_inst, post_inst)
-
+        action.mapping = mapping
         action.command_template = self._make_command_template(mapping)
+        action.feedback_rule = self.feedback_rule
         if self.reverse_rule:
             action.reverse_name = self.reverse_rule.name
             action.reverse_command_template = self.reverse_rule._make_command_template(mapping)
@@ -1506,9 +1614,8 @@ class State:
         facts : optional
             The facts that will be true in this state.
         """
-
-        if not isinstance(logic, GameLogic):
-            raise ValueError("Expected a GameLogic, found {}".format(type(logic)))
+        # if not isinstance(logic, GameLogic):
+        #     raise ValueError("Expected a GameLogic, found {}".format(type(logic)))
         self._logic = logic
 
         self._facts = defaultdict(set)
@@ -1815,7 +1922,7 @@ class State:
         types = [self._logic.types.get(t) for t in pred.signature.types]
         for subtypes in self._logic.types.multi_subtypes(types):
             signature = Signature(pred.signature.name, [t.name for t in subtypes])
-            for prop in self.facts_with_signature(signature):
+            for prop in sorted(self.facts_with_signature(signature)):
                 for ph, var in zip(pred.parameters, prop.arguments):
                     existing = mapping.get(ph)
                     if existing is None:

@@ -169,3 +169,52 @@ class TypeNode(ModelBase):
 @dataclass(eq=False)
 class DocumentNode(ModelBase):
     types: Any = None
+
+
+@dataclass(eq=False)
+class ActionTemplateNode(ModelBase):
+    template: Any = None
+
+
+@dataclass(eq=False)
+class ActionFeedbackNode(ModelBase):
+    name: Any = None
+
+
+@dataclass(eq=False)
+class ActionPddlNode(ModelBase):
+    code: Any = None
+
+
+@dataclass(eq=False)
+class ActionGrammarNode(ModelBase):
+    code: Any = None
+
+
+@dataclass(eq=False)
+class ActionTypeNode(ModelBase):
+    feedback: Any = None
+    grammar: Any = None
+    name: Any = None
+    pddl: Any = None
+    template: Any = None
+
+
+@dataclass(eq=False)
+class PddlDocumentNode(ModelBase):
+    parts: Any = None
+
+
+@dataclass(eq=False)
+class ExpressionNode(ModelBase):
+    expression: Any = None
+
+
+@dataclass(eq=False)
+class ConjunctionNode(ModelBase):
+    expressions: Any = None
+
+
+@dataclass(eq=False)
+class DisjunctionNode(ModelBase):
+    expressions: Any = None

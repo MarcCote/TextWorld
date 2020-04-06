@@ -135,8 +135,7 @@ class Grammar:
 
     _cache = {}
 
-    def __init__(self, options: Union[GrammarOptions, Mapping[str, Any]] = {}, rng: Optional[RandomState] = None,
-                 kb: Optional[KnowledgeBase] = None):
+    def __init__(self, options: Union[GrammarOptions, Mapping[str, Any]] = {}, rng: Optional[RandomState] = None):
         """
         Arguments:
             options:

@@ -1,27 +1,49 @@
 @@grammar :: TextGrammar
 
-@@whitespace :: ?"[\t ]+"
+@@whitespace :: ?"[\t]+"
 
-@@eol_comments :: ?"^(#.*|\s*)\n"
+@@eol_comments :: ?"^(//.*|\s*)\n?"
 
 start = grammar ;
 
-symbol = ?"[\w()/!<>-]+" ;
+tag = ?"[\w()/!<>\-\s,.]+" ;
 
-literal = ?"((?:[^;|<>\n\[\]()]|\[[^\[\]]*\]|\([^()]*\))+(?<!\s))" ;
+given = ?"[^;|{}\n\[\]#]+" ;
 
-literalAlternative::Literal = value:literal ;
+statement = ?"[^|\[\]{}\n<>]+" ;
 
-adjectiveNoun::AdjectiveNoun = adjective:literal "|" noun:literal ;
+Literal = ?'[^;|"<>\[\]#{}]*' ;
+
+literalAlternative::Literal = value:Literal ;
+
+terminalSymbol::TerminalSymbol = ('"' literal:Literal '"' | ~literal:Literal);
+
+nonterminalSymbol::NonterminalSymbol = "#" symbol:tag "#" ;
+
+evalSymbol::EvalSymbol = statement:statement ;
+
+conditionalSymbol::ConditionalSymbol = expression:(nonterminalSymbol | evalSymbol) [?"\s*\|\s*" given:given] ;
+
+specialSymbol::SpecialSymbol = "{" statement:conditionalSymbol "}" ;
+
+listSymbol::ListSymbol = "[" symbol:specialSymbol "]" ;
+
+pythonSymbol::PythonSymbol = "<" statement:statement ">" ;
+
+Symbol = listSymbol | specialSymbol | nonterminalSymbol | terminalSymbol;
+
+adjectiveNoun::AdjectiveNoun = adjective:Literal "|" noun:Literal ;
 
 entity = adjectiveNoun | literalAlternative ;
 
 match::Match = lhs:entity "<->" rhs:entity ;
 
-alternative = match | entity | ();
+String::String = symbols:{Symbol}+ ;
 
-alternatives = ";".{alternative}+ ;
+alternatives = ";".{String}+ ;
 
-productionRule::ProductionRule = symbol:symbol ":" alternatives:alternatives ("\n" | $) ;
+productionRule::ProductionRule = symbol:tag ":" alternatives:alternatives ("\n" | $) ;
 
 grammar::TextGrammar = rules:{productionRule}* $ ;
+
+onlyString = @:String $ ;

@@ -38,6 +38,42 @@ class Literal(ModelBase):
 
 
 @dataclass(eq=False)
+class TerminalSymbol(ModelBase):
+    literal: Any = None
+
+
+@dataclass(eq=False)
+class NonterminalSymbol(ModelBase):
+    symbol: Any = None
+
+
+@dataclass(eq=False)
+class EvalSymbol(ModelBase):
+    statement: Any = None
+
+
+@dataclass(eq=False)
+class ConditionalSymbol(ModelBase):
+    expression: Any = None
+    given: Any = None
+
+
+@dataclass(eq=False)
+class SpecialSymbol(ModelBase):
+    statement: Any = None
+
+
+@dataclass(eq=False)
+class ListSymbol(ModelBase):
+    symbol: Any = None
+
+
+@dataclass(eq=False)
+class PythonSymbol(ModelBase):
+    statement: Any = None
+
+
+@dataclass(eq=False)
 class AdjectiveNoun(ModelBase):
     adjective: Any = None
     noun: Any = None
@@ -47,6 +83,11 @@ class AdjectiveNoun(ModelBase):
 class Match(ModelBase):
     lhs: Any = None
     rhs: Any = None
+
+
+@dataclass(eq=False)
+class String(ModelBase):
+    symbols: Any = None
 
 
 @dataclass(eq=False)

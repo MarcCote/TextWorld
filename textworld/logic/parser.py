@@ -73,7 +73,7 @@ class GameLogicParser(Parser):
 
     @tatsumasu()
     def _name_(self):  # noqa
-        self._pattern('\\w+')
+        self._pattern('[\\w/-]+')
 
     @tatsumasu()
     def _phName_(self):  # noqa
@@ -81,7 +81,7 @@ class GameLogicParser(Parser):
 
     @tatsumasu()
     def _predName_(self):  # noqa
-        self._pattern('[\\w/]+')
+        self._pattern('!?[\\w/]+')
 
     @tatsumasu()
     def _ruleName_(self):  # noqa
@@ -295,8 +295,8 @@ class GameLogicParser(Parser):
                 self._signature_()
             self._error(
                 'expecting one of: '
-                '<alias> <predName> <predicate>'
-                '<signature> [\\w/]+'
+                '!?[\\w/]+ <alias> <predName> <predicate>'
+                '<signature>'
             )
 
     @tatsumasu('ReverseRuleNode')
@@ -594,6 +594,221 @@ class GameLogicParser(Parser):
             []
         )
 
+    @tatsumasu('ActionTemplateNode')
+    def _template_(self):  # noqa
+        self._token('template')
+        self._token('::')
+        self._str_()
+        self.name_last_node('template')
+        self._token(';')
+
+        self._define(
+            ['template'],
+            []
+        )
+
+    @tatsumasu('ActionFeedbackNode')
+    def _feedback_(self):  # noqa
+        self._token('feedback')
+        self._token('::')
+        self._str_()
+        self.name_last_node('name')
+        self._token(';')
+
+        self._define(
+            ['name'],
+            []
+        )
+
+    @tatsumasu('ActionPddlNode')
+    def _pddl_(self):  # noqa
+        self._token('pddl')
+        self._token('::')
+        self._strBlock_()
+        self.name_last_node('code')
+        self._token(';')
+
+        self._define(
+            ['code'],
+            []
+        )
+
+    @tatsumasu('ActionGrammarNode')
+    def _grammar_(self):  # noqa
+        self._token('grammar')
+        self._token('::')
+        self._strBlock_()
+        self.name_last_node('code')
+        self._token(';')
+
+        self._define(
+            ['code'],
+            []
+        )
+
+    @tatsumasu()
+    def _actionTypePart_(self):  # noqa
+        with self._choice():
+            with self._option():
+                self._template_()
+            with self._option():
+                self._pddl_()
+            with self._option():
+                self._grammar_()
+            self._error(
+                'expecting one of: '
+                "'grammar' 'pddl' 'template'"
+            )
+
+    @tatsumasu('ActionTypeNode')
+    def _actionType_(self):  # noqa
+        self._token('action')
+        self._name_()
+        self.name_last_node('name')
+        self._token('{')
+
+        def block1():
+            with self._group():
+                with self._choice():
+                    with self._option():
+                        self._template_()
+                        self.name_last_node('template')
+                    with self._option():
+                        self._feedback_()
+                        self.name_last_node('feedback')
+                    with self._option():
+                        self._pddl_()
+                        self.name_last_node('pddl')
+                    with self._option():
+                        self._grammar_()
+                        self.name_last_node('grammar')
+                    self._error(
+                        'expecting one of: '
+                        '<feedback> <grammar> <pddl> <template>'
+                    )
+        self._closure(block1)
+        self._token('}')
+
+        self._define(
+            ['feedback', 'grammar', 'name', 'pddl', 'template'],
+            []
+        )
+
+    @tatsumasu('PddlDocumentNode')
+    def _pddlDocument_(self):  # noqa
+
+        def block1():
+            with self._group():
+                with self._choice():
+                    with self._option():
+                        self._actionType_()
+                    with self._option():
+                        self._grammar_()
+                    self._error(
+                        'expecting one of: '
+                        '<actionType> <grammar>'
+                    )
+        self._closure(block1)
+        self.name_last_node('parts')
+        self._check_eof()
+
+        self._define(
+            ['parts'],
+            []
+        )
+
+    @tatsumasu()
+    def _pddlStart_(self):  # noqa
+        self._pddlDocument_()
+
+    @tatsumasu('ExpressionNode')
+    @leftrec
+    def _expression_(self):  # noqa
+        with self._group():
+            with self._choice():
+                with self._option():
+                    self._conjunction_()
+                with self._option():
+                    self._disjunction_()
+                with self._option():
+                    self._predicate_()
+                self._error(
+                    'expecting one of: '
+                    "!?[\\w/]+ '(' <conjunction> <disjunction>"
+                    '<expression> <predName> <predicate>'
+                )
+        self.name_last_node('expression')
+
+    @tatsumasu('ConjunctionNode')
+    @nomemo
+    def _conjunction_(self):  # noqa
+        with self._choice():
+            with self._option():
+                self._token('(')
+
+                def sep2():
+                    self._token('&')
+
+                def block2():
+                    self._expression_()
+                self._positive_gather(block2, sep2)
+                self.name_last_node('expressions')
+                self._token(')')
+
+                self._define(
+                    ['expressions'],
+                    []
+                )
+            with self._option():
+
+                def sep4():
+                    self._token('&')
+
+                def block4():
+                    self._expression_()
+                self._positive_gather(block4, sep4)
+                self.name_last_node('expressions')
+            self._error(
+                'expecting one of: '
+                "!?[\\w/]+ '(' <conjunction> <disjunction>"
+                '<expression> <predName> <predicate>'
+            )
+
+    @tatsumasu('DisjunctionNode')
+    @nomemo
+    def _disjunction_(self):  # noqa
+        with self._choice():
+            with self._option():
+                self._token('(')
+
+                def sep2():
+                    self._token('|')
+
+                def block2():
+                    self._expression_()
+                self._positive_gather(block2, sep2)
+                self.name_last_node('expressions')
+                self._token(')')
+
+                self._define(
+                    ['expressions'],
+                    []
+                )
+            with self._option():
+
+                def sep4():
+                    self._token('|')
+
+                def block4():
+                    self._expression_()
+                self._positive_gather(block4, sep4)
+                self.name_last_node('expressions')
+            self._error(
+                'expecting one of: '
+                "!?[\\w/]+ '(' <conjunction> <disjunction>"
+                '<expression> <predName> <predicate>'
+            )
+
     @tatsumasu()
     def _onlyVariable_(self):  # noqa
         self._variable_()
@@ -633,6 +848,12 @@ class GameLogicParser(Parser):
     @tatsumasu()
     def _onlyRule_(self):  # noqa
         self._rule_()
+        self.name_last_node('@')
+        self._check_eof()
+
+    @tatsumasu()
+    def _onlyExpression_(self):  # noqa
+        self._expression_()
         self.name_last_node('@')
         self._check_eof()
 
@@ -749,6 +970,39 @@ class GameLogicSemantics:
     def document(self, ast):  # noqa
         return ast
 
+    def template(self, ast):  # noqa
+        return ast
+
+    def feedback(self, ast):  # noqa
+        return ast
+
+    def pddl(self, ast):  # noqa
+        return ast
+
+    def grammar(self, ast):  # noqa
+        return ast
+
+    def actionTypePart(self, ast):  # noqa
+        return ast
+
+    def actionType(self, ast):  # noqa
+        return ast
+
+    def pddlDocument(self, ast):  # noqa
+        return ast
+
+    def pddlStart(self, ast):  # noqa
+        return ast
+
+    def expression(self, ast):  # noqa
+        return ast
+
+    def conjunction(self, ast):  # noqa
+        return ast
+
+    def disjunction(self, ast):  # noqa
+        return ast
+
     def onlyVariable(self, ast):  # noqa
         return ast
 
@@ -768,6 +1022,9 @@ class GameLogicSemantics:
         return ast
 
     def onlyRule(self, ast):  # noqa
+        return ast
+
+    def onlyExpression(self, ast):  # noqa
         return ast
 
 
