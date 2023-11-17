@@ -71,12 +71,12 @@ class PddlEnv(textworld.Environment):
         self.state["lost"] = False  # Can an ALFRED gamebe lost?
 
         self.state["_winning_policy"] = self._current_winning_policy
-        # if self.infos.policy_commands:
+        # if self.request_infos.policy_commands:
         #     self.state["policy_commands"] = []
         #     if self._game_progression.winning_policy is not None:
         #         self.state["policy_commands"] = self._inform7.gen_commands_from_actions(self._current_winning_policy)
 
-        if self.infos.intermediate_reward:
+        if self.request_infos.intermediate_reward:
             self.state["intermediate_reward"] = 0
             if self.state["won"]:
                 # The last action led to winning the game.
@@ -93,12 +93,12 @@ class PddlEnv(textworld.Environment):
                 diff = len(self._previous_winning_policy) - len(self._current_winning_policy)
                 self.state["intermediate_reward"] = int(diff > 0) - int(diff < 0)  # Sign function.
 
-        # if self.infos.facts:
+        # if self.request_infos.facts:
         #     self.state["facts"] = list(map(self._inform7.get_human_readable_fact, self.state["_facts"]))
 
         self.state["last_action"] = None
         self.state["_last_action"] = self._last_action
-        # if self.infos.last_action and self._last_action is not None:
+        # if self.request_infos.last_action and self._last_action is not None:
         #     self.state["last_action"] = self._inform7.get_human_readable_action(self._last_action)
 
         self.state["_valid_actions"] = self._game_progression.valid_actions
@@ -125,12 +125,12 @@ class PddlEnv(textworld.Environment):
         # Remove any potential duplicate commands (they would lead to the same result anyway).
         self.state["admissible_commands"] = sorted(set(self.state["_valid_commands"]))
 
-        if self.infos.moves:
+        if self.request_infos.moves:
             self.state["moves"] = self._moves
 
         # expert plan
-        if self.infos.expert_plan:
-            if self.infos.expert_type == "handcoded":
+        if self.request_infos.expert_plan:
+            if self.request_infos.expert_type == "handcoded":
                 self.state["expert_plan"] = ["look"]
                 try:
                     # initialization
@@ -150,7 +150,7 @@ class PddlEnv(textworld.Environment):
     def reset(self):
         self.prev_state = None
         self.state = GameState()
-        track_quests = (self.infos.intermediate_reward or self.infos.policy_commands)
+        track_quests = (self.request_infos.intermediate_reward or self.request_infos.policy_commands)
         self._game_progression = GameProgression(self._game, track_quests=track_quests)
         self._last_action = None
         self._previous_winning_policy = None
@@ -172,7 +172,7 @@ class PddlEnv(textworld.Environment):
         self.state.raw = self.state.feedback
         self._gather_infos()
 
-        if "walkthrough" in self.infos.extras:
+        if "walkthrough" in self.request_infos.extras:
             self.state["extra.walkthrough"] = self._game_progression.state.replan(self._game.infos)
 
         return self.state
@@ -223,7 +223,7 @@ class PddlEnv(textworld.Environment):
         env = PddlEnv()
 
         env.state = self.state
-        env.infos = self.infos
+        env.infos = self.request_infos
 
         env._gamefile = self._gamefile
         env._game = self._game
