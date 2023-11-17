@@ -142,3 +142,43 @@ class TypeNode(ModelBase):
 
 class DocumentNode(ModelBase):
     types = None
+
+
+class ActionTemplateNode(ModelBase):
+    template = None
+
+
+class ActionFeedbackNode(ModelBase):
+    name = None
+
+
+class ActionPddlNode(ModelBase):
+    code = None
+
+
+class ActionGrammarNode(ModelBase):
+    code = None
+
+
+class ActionTypeNode(ModelBase):
+    feedback = None
+    grammar = None
+    name = None
+    pddl = None
+    template = None
+
+
+class PddlDocumentNode(ModelBase):
+    parts = None
+
+
+class ExpressionNode(ModelBase):
+    expression = None
+
+
+class ConjunctionNode(ModelBase):
+    expressions = None
+
+
+class DisjunctionNode(ModelBase):
+    expressions = None

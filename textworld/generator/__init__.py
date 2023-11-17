@@ -162,8 +162,9 @@ def make_grammar(options: Mapping = {}, rng: Optional[RandomState] = None) -> Gr
 def make_game_with(world, quests=None, grammar=None):
     game = Game(world, grammar, quests)
     if grammar is None:
-        for var, var_infos in game.infos.items():
-            var_infos.name = var.name
+        for entity_infos in game.infos.values():
+            entity_infos.name = entity_infos.id
+            entity_infos.desc = ""
     else:
         game = generate_text_from_grammar(game, grammar)
 

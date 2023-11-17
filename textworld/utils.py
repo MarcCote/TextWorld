@@ -214,5 +214,9 @@ def check_modules(required_modules: List[str], missing_modules: List[str]):
         raise ImportError(msg)
 
 
+def check_flag(flag: str):
+    return str2bool(os.environ.get(flag))
+
+
 #: Global random generator.
 g_rng = RandomGenerator()

@@ -29,10 +29,10 @@ class TextGrammarBuffer(Buffer):
     def __init__(
         self,
         text,
-        whitespace=re.compile('[\\t ]+'),
+        whitespace=re.compile('[\\t]+'),
         nameguard=None,
         comments_re=None,
-        eol_comments_re='^(#.*|\\s*)\\n',
+        eol_comments_re='^(//.*|\\s*)\\n?',
         ignorecase=None,
         namechars='',
         **kwargs
@@ -52,10 +52,10 @@ class TextGrammarBuffer(Buffer):
 class TextGrammarParser(Parser):
     def __init__(
         self,
-        whitespace=re.compile('[\\t ]+'),
+        whitespace=re.compile('[\\t]+'),
         nameguard=None,
         comments_re=None,
-        eol_comments_re='^(#.*|\\s*)\\n',
+        eol_comments_re='^(//.*|\\s*)\\n?',
         ignorecase=None,
         left_recursion=True,
         parseinfo=True,
@@ -81,28 +81,139 @@ class TextGrammarParser(Parser):
         )
 
     @tatsumasu()
-    def _symbol_(self):  # noqa
-        self._pattern('[\\w()/!<>-]+')
+    def _tag_(self):  # noqa
+        self._pattern('[\\w()/!<>\\-\\s,.]+')
 
     @tatsumasu()
-    def _literal_(self):  # noqa
-        self._pattern('(([^;|<>\\n\\[\\]()]|\\[[^\\[\\]]*\\]|\\([^()]*\\))+(?<!\\s))')
+    def _given_(self):  # noqa
+        self._pattern('([^;|{}\\n\\[\\]#])+')
+
+    @tatsumasu()
+    def _statement_(self):  # noqa
+        self._pattern('([^|\\[\\]{}\\n<>])+')
+
+    @tatsumasu()
+    def _Literal_(self):  # noqa
+        self._pattern('([^;|"<>\\[\\]#{}]+)?')
 
     @tatsumasu('Literal')
     def _literalAlternative_(self):  # noqa
-        self._literal_()
+        self._Literal_()
         self.name_last_node('value')
         self.ast._define(
             ['value'],
             []
         )
 
+    @tatsumasu('TerminalSymbol')
+    def _TerminalSymbol_(self):  # noqa
+        with self._group():
+            with self._choice():
+                with self._option():
+                    self._token('"')
+                    self._Literal_()
+                    self.name_last_node('literal')
+                    self._token('"')
+                with self._option():
+                    self._Literal_()
+                    self.name_last_node('literal')
+                self._error('no available options')
+        self.ast._define(
+            ['literal'],
+            []
+        )
+
+    @tatsumasu('NonterminalSymbol')
+    def _nonterminalSymbol_(self):  # noqa
+        self._token('#')
+        self._tag_()
+        self.name_last_node('symbol')
+        self._token('#')
+        self.ast._define(
+            ['symbol'],
+            []
+        )
+
+    @tatsumasu('EvalSymbol')
+    def _evalSymbol_(self):  # noqa
+        self._statement_()
+        self.name_last_node('statement')
+        self.ast._define(
+            ['statement'],
+            []
+        )
+
+    @tatsumasu('ConditionalSymbol')
+    def _conditionalSymbol_(self):  # noqa
+        with self._group():
+            with self._choice():
+                with self._option():
+                    self._nonterminalSymbol_()
+                with self._option():
+                    self._evalSymbol_()
+                self._error('no available options')
+        self.name_last_node('expression')
+        with self._optional():
+            self._pattern('\\s*\\|\\s*')
+            self._given_()
+            self.name_last_node('given')
+        self.ast._define(
+            ['expression', 'given'],
+            []
+        )
+
+    @tatsumasu('SpecialSymbol')
+    def _specialSymbol_(self):  # noqa
+        self._token('{')
+        self._conditionalSymbol_()
+        self.name_last_node('statement')
+        self._token('}')
+        self.ast._define(
+            ['statement'],
+            []
+        )
+
+    @tatsumasu('ListSymbol')
+    def _listSymbol_(self):  # noqa
+        self._token('[')
+        self._specialSymbol_()
+        self.name_last_node('symbol')
+        self._token(']')
+        self.ast._define(
+            ['symbol'],
+            []
+        )
+
+    @tatsumasu('PythonSymbol')
+    def _pythonSymbol_(self):  # noqa
+        self._token('<')
+        self._statement_()
+        self.name_last_node('statement')
+        self._token('>')
+        self.ast._define(
+            ['statement'],
+            []
+        )
+
+    @tatsumasu()
+    def _Symbol_(self):  # noqa
+        with self._choice():
+            with self._option():
+                self._listSymbol_()
+            with self._option():
+                self._specialSymbol_()
+            with self._option():
+                self._nonterminalSymbol_()
+            with self._option():
+                self._TerminalSymbol_()
+            self._error('no available options')
+
     @tatsumasu('AdjectiveNoun')
     def _adjectiveNoun_(self):  # noqa
-        self._literal_()
+        self._Literal_()
         self.name_last_node('adjective')
         self._token('|')
-        self._literal_()
+        self._Literal_()
         self.name_last_node('noun')
         self.ast._define(
             ['adjective', 'noun'],
@@ -130,16 +241,17 @@ class TextGrammarParser(Parser):
             []
         )
 
-    @tatsumasu()
-    def _alternative_(self):  # noqa
-        with self._choice():
-            with self._option():
-                self._match_()
-            with self._option():
-                self._entity_()
-            with self._option():
-                self._void()
-            self._error('no available options')
+    @tatsumasu('String')
+    def _String_(self):  # noqa
+
+        def block1():
+            self._Symbol_()
+        self._positive_closure(block1)
+        self.name_last_node('symbols')
+        self.ast._define(
+            ['symbols'],
+            []
+        )
 
     @tatsumasu()
     def _alternatives_(self):  # noqa
@@ -148,12 +260,12 @@ class TextGrammarParser(Parser):
             self._token(';')
 
         def block0():
-            self._alternative_()
+            self._String_()
         self._positive_gather(block0, sep0)
 
     @tatsumasu('ProductionRule')
     def _productionRule_(self):  # noqa
-        self._symbol_()
+        self._tag_()
         self.name_last_node('symbol')
         self._token(':')
         self._alternatives_()
@@ -187,15 +299,51 @@ class TextGrammarParser(Parser):
     def _start_(self):  # noqa
         self._grammar_()
 
+    @tatsumasu()
+    def _onlyString_(self):  # noqa
+        self._String_()
+        self.name_last_node('@')
+        self._check_eof()
+
 
 class TextGrammarSemantics(object):
-    def symbol(self, ast):  # noqa
+    def tag(self, ast):  # noqa
         return ast
 
-    def literal(self, ast):  # noqa
+    def given(self, ast):  # noqa
+        return ast
+
+    def statement(self, ast):  # noqa
+        return ast
+
+    def Literal(self, ast):  # noqa
         return ast
 
     def literalAlternative(self, ast):  # noqa
+        return ast
+
+    def TerminalSymbol(self, ast):  # noqa
+        return ast
+
+    def nonterminalSymbol(self, ast):  # noqa
+        return ast
+
+    def evalSymbol(self, ast):  # noqa
+        return ast
+
+    def conditionalSymbol(self, ast):  # noqa
+        return ast
+
+    def specialSymbol(self, ast):  # noqa
+        return ast
+
+    def listSymbol(self, ast):  # noqa
+        return ast
+
+    def pythonSymbol(self, ast):  # noqa
+        return ast
+
+    def Symbol(self, ast):  # noqa
         return ast
 
     def adjectiveNoun(self, ast):  # noqa
@@ -207,7 +355,7 @@ class TextGrammarSemantics(object):
     def match(self, ast):  # noqa
         return ast
 
-    def alternative(self, ast):  # noqa
+    def String(self, ast):  # noqa
         return ast
 
     def alternatives(self, ast):  # noqa
@@ -222,10 +370,13 @@ class TextGrammarSemantics(object):
     def start(self, ast):  # noqa
         return ast
 
+    def onlyString(self, ast):  # noqa
+        return ast
+
 
 def main(filename, start=None, **kwargs):
     if start is None:
-        start = 'symbol'
+        start = 'tag'
     if not filename or filename == '-':
         text = sys.stdin.read()
     else:

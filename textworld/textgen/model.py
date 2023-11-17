@@ -33,6 +33,35 @@ class Literal(ModelBase):
     value = None
 
 
+class TerminalSymbol(ModelBase):
+    literal = None
+
+
+class NonterminalSymbol(ModelBase):
+    symbol = None
+
+
+class EvalSymbol(ModelBase):
+    statement = None
+
+
+class ConditionalSymbol(ModelBase):
+    expression = None
+    given = None
+
+
+class SpecialSymbol(ModelBase):
+    statement = None
+
+
+class ListSymbol(ModelBase):
+    symbol = None
+
+
+class PythonSymbol(ModelBase):
+    statement = None
+
+
 class AdjectiveNoun(ModelBase):
     adjective = None
     noun = None
@@ -41,6 +70,10 @@ class AdjectiveNoun(ModelBase):
 class Match(ModelBase):
     lhs = None
     rhs = None
+
+
+class String(ModelBase):
+    symbols = None
 
 
 class ProductionRule(ModelBase):

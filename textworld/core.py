@@ -27,6 +27,7 @@ class EnvInfos:
                  'score', 'moves', 'max_score', 'objective',
                  'entities', 'verbs', 'command_templates',
                  'admissible_commands', 'intermediate_reward',
+                 'expert_plan', 'expert_type',
                  'policy_commands',
                  'extras']
 
@@ -71,8 +72,17 @@ class EnvInfos:
         #: bool: All commands relevant to the current state.
         #:       This information changes from one step to another.
         self.admissible_commands = kwargs.get("admissible_commands", False)
+        # #: bool: Current PDDL state
+        # #:       This information changes from one step to another.
+        # self.pddl_state = kwargs.get("pddl_state", False)
+        #: bool: Current PDDL state
+        #:       This information changes from one step to another.
+        self.expert_plan = kwargs.get("expert_plan", False)
         #: bool: Sequence of commands leading to a winning state.
         #:       This information changes from one step to another.
+        self.expert_type = kwargs.get("expert_type", "handcoded")
+        #: str: type of expert, either handcoded or downward
+        #:       This information doen't change from one step to another.
         self.policy_commands = kwargs.get("policy_commands", False)
         #: bool: Reward (proxy) indicating if the player is making progress.
         #:       This information changes from one step to another.

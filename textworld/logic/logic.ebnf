@@ -7,11 +7,11 @@ str = ?'"[^"]*"' ;
 
 strBlock = ?'"""(.|\n)*?"""' ;
 
-name = ?"\w+" ;
+name = ?"[\w/-]+" ;
 
 phName = ?"[\w']+" ;
 
-predName = ?"[\w/]+" ;
+predName = ?"!?[\w/]+" ;
 
 ruleName = ?"[\w/]+" ;
 
@@ -93,6 +93,32 @@ document::DocumentNode = types:{type}* $ ;
 start = document ;
 
 
+template::ActionTemplateNode = "template" "::" template:str ";" ;
+
+feedback::ActionFeedbackNode = "feedback" "::" name:str ";" ;
+
+pddl::ActionPddlNode = "pddl" "::" code:strBlock ";" ;
+
+grammar::ActionGrammarNode = "grammar" "::" code:strBlock ";" ;
+
+actionTypePart = template | pddl | grammar;
+
+(* actionType::ActionTypeNode = "action" name:name "{" parts:{actionType}* "}" ; *)
+
+actionType::ActionTypeNode = "action" name:name "{" {(template:template | feedback:feedback | pddl:pddl | grammar:grammar)}* "}" ;
+
+pddlDocument::PddlDocumentNode = parts:{(actionType | grammar)}* $ ;
+
+pddlStart = pddlDocument ;
+
+
+expression::ExpressionNode = expression:(conjunction | disjunction | predicate) ;
+
+conjunction::ConjunctionNode = "(" expressions:"&".{expression}+ ")" | expressions:"&".{expression}+ ;
+
+disjunction::DisjunctionNode = "(" expressions:"|".{expression}+ ")" | expressions:"|".{expression}+;
+
+
 onlyVariable = @:variable $ ;
 onlySignature = @:signature $ ;
 onlyProposition = @:proposition $ ;
@@ -100,3 +126,4 @@ onlyPlaceholder = @:placeholder $ ;
 onlyPredicate = @:predicate $ ;
 onlyAction = @:action $ ;
 onlyRule = @:rule $ ;
+onlyExpression = @:expression $ ;

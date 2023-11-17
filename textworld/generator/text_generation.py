@@ -105,6 +105,18 @@ def assign_description_to_object(obj, grammar, game):
 
 
 def generate_text_from_grammar(game, grammar: Grammar):
+    context = {
+        "state": game.world.state,
+        "facts": list(game.world.state.facts),
+        "variables": {},
+        "mapping": dict(game.kb.types.constants_mapping),
+        "entity_infos": game.infos,
+    }
+    for room in game.world.rooms:
+        game.infos[room.id].desc = grammar.grammar.derive("#dec2#", context)
+
+    return ""#grammar.grammar.derive("#dec2#", context)
+
     # Assign a specific room type and name to our rooms
     for room in game.world.rooms:
         # First, generate a unique roomtype and name from the grammar
@@ -149,6 +161,8 @@ def assign_description_to_room(room, game, grammar):
     """
     Assign a descripton to a room.
     """
+    return expand_clean_replace("#dec2#\n\n", grammar, room, game)
+
     # Add the decorative text
     room_desc = expand_clean_replace("#dec#\n\n", grammar, room, game)
 
@@ -538,7 +552,7 @@ def replace_num(phrase, val):
 def expand_clean_replace(symbol, grammar, obj, game):
     """ Return a cleaned/keyword replaced symbol. """
     obj_infos = game.infos[obj.id]
-    phrase = grammar.expand(symbol)
+    phrase = grammar.expand(symbol, game=game)
     phrase = phrase.replace("(obj)", obj_infos.id)
     phrase = phrase.replace("(name)", obj_infos.name)
     phrase = phrase.replace("(name-n)", obj_infos.noun if obj_infos.adj is not None else obj_infos.name)

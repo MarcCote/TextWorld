@@ -38,7 +38,7 @@ def build_graph_from_facts(facts: Iterable[Proposition]) -> nx.DiGraph:
         src = triplet[0]
         dest = triplet[1]
         relation = triplet[-1]
-        if relation in {"is"}:
+        if relation in {"is"} or relation.endswith("type"):
             # For entity properties and states, we artificially
             # add unique node for better visualization.
             dest = src + "-" + dest
@@ -54,7 +54,8 @@ def build_graph_from_facts(facts: Iterable[Proposition]) -> nx.DiGraph:
 def show_graph(facts: Iterable[Proposition],
                title: str = "Knowledge Graph",
                renderer: Optional[str] = None,
-               save: Optional[str] = None) -> "plotly.graph_objs._figure.Figure":
+               save: Optional[str] = None,
+               save_html: Optional[str] = None) -> "plotly.graph_objs._figure.Figure":
 
     r""" Visualizes the graph made from a collection of facts.
 
@@ -89,7 +90,11 @@ def show_graph(facts: Iterable[Proposition],
     G = build_graph_from_facts(facts)
 
     plt.figure(figsize=(16, 9))
-    pos = nx.drawing.nx_pydot.pydot_layout(G, prog="fdp")
+
+    H = nx.convert_node_labels_to_integers(G, label_attribute='node_label')
+    H_layout = nx.nx_pydot.pydot_layout(H, prog="fdp")
+    pos = {H.nodes[n]['node_label']: p for n, p in H_layout.items()}
+    #pos = nx.drawing.nx_pydot.pydot_layout(G, prog="fdp")
 
     edge_labels_pos = {}
     trace3_list = []
@@ -171,11 +176,21 @@ def show_graph(facts: Iterable[Proposition],
 
     # Add relation names and relation arrows.
     annotations = []
+    seen_undirected_labels = set()
     for edge in G.edges(data=True):
         p0, p1 = pos[edge[0]], pos[edge[1]]
         x0, y0 = p0
         x1, y1 = p1
         angle = _get_angle(p0, p1)
+        text = "<i>{}</i>".format(edge[2]['type'])
+
+        key = tuple(sorted([edge[0], edge[1], edge[2]['type']]))
+        if key in seen_undirected_labels:
+            text = ""
+
+        seen_undirected_labels.add(key)
+
+
         annotations.append(
             go.layout.Annotation(
                 x=x1,
@@ -197,7 +212,7 @@ def show_graph(facts: Iterable[Proposition],
                 x=edge_labels_pos[(p0, p1)][0],
                 y=edge_labels_pos[(p0, p1)][1],
                 showarrow=False,
-                text="<i>{}</i>".format(edge[2]['type']),
+                text=text,
                 textangle=angle,
                 font=dict(
                     family="sans serif",
@@ -214,5 +229,8 @@ def show_graph(facts: Iterable[Proposition],
 
     if save:
         fig.write_image(save, width=1920, height=1080, scale=4)
+
+    if save_html:
+        fig.write_html(save_html)
 
     return fig
