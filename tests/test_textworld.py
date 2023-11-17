@@ -136,8 +136,6 @@ def test_playing_generated_games():
             # Play the game using RandomAgent and make sure we can always finish the
             # game by following the winning policy.
             env = textworld.start(game_file)
-            env.infos.policy_commands = True
-            env.infos.game = True
 
             agent = textworld.agents.RandomCommandAgent()
             agent.reset(env)
