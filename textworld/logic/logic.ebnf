@@ -1,11 +1,12 @@
 @@grammar :: GameLogic
 
-@@eol_comments :: ?"#.*$"
+@@eol_comments :: /#.*?$/
 
+start = document ;
 
 str = ?'"[^"]*"' ;
 
-strBlock = ?'"""(.|\n)*?"""' ;
+strBlock = ?'"""(?:.|\n)*?"""' ;
 
 name = ?"[\w/-]+" ;
 
@@ -90,8 +91,6 @@ type::TypeNode = "type" name:name [":" supertypes:",".{name}+] "{" parts:{typePa
 
 document::DocumentNode = types:{type}* $ ;
 
-start = document ;
-
 
 template::ActionTemplateNode = "template" "::" template:str ";" ;
 
@@ -110,7 +109,6 @@ actionType::ActionTypeNode = "action" name:name "{" {(template:template | feedba
 pddlDocument::PddlDocumentNode = parts:{(actionType | grammar)}* $ ;
 
 pddlStart = pddlDocument ;
-
 
 expression::ExpressionNode = expression:(conjunction | disjunction | predicate) ;
 

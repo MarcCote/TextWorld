@@ -26,7 +26,7 @@ class Symbol:
 class TerminalSymbol(Symbol):
 
     def __repr__(self):
-        return "TerminalSymbol('{}')".format(self.symbol)
+        return "TerminalSymbol({})".format(repr(self.symbol))
 
 
 class NonterminalSymbol(Symbol):
