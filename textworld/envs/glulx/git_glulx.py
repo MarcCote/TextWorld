@@ -18,7 +18,7 @@ import textworld
 from textworld.core import GameState
 from textworld.core import GameNotRunningError
 
-I7_DEFAULT_PATH = pjoin(importlib.resources.files("textworld"), "thirdparty", "glulx", "Git-Glulx")
+GLULX_PATH = pjoin(importlib.resources.files("textworld"), "thirdparty", "glulx", "Git-Glulx")
 
 
 def _strip_input_prompt_symbol(text: str) -> str:
