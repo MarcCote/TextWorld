@@ -136,7 +136,7 @@ class JerichoEnv(textworld.Environment):
 
         # Copy core Environment's attributes.
         env.state = self.state.copy()
-        env.infos = self.request_infos.copy()
+        env.request_infos = self.request_infos.copy()
         return env
 
 

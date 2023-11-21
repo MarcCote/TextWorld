@@ -7,8 +7,9 @@ import tempfile
 import unittest
 from os.path import join as pjoin
 
+import pytest
+import jericho
 import numpy as np
-import numpy.testing as npt
 
 import textworld
 from textworld import g_rng
@@ -139,9 +140,11 @@ class TestJerichoEnv(unittest.TestCase):
 
     def test_step(self):
         env = JerichoEnv(self.request_infos)
-        npt.assert_raises(GameNotRunningError, env.step, "look")
-        env.load(self.game_file)
-        npt.assert_raises(GameNotRunningError, env.step, "look")
+        with pytest.raises(GameNotRunningError):
+            env.step("look")
+
+        with pytest.raises(GameNotRunningError):
+            env.step("look")
 
         # Test sending empty command.
         self.env.reset()
@@ -152,7 +155,10 @@ class TestJerichoEnv(unittest.TestCase):
         shutil.copyfile(self.game_file, game_file)
 
         env = JerichoEnv(self.request_infos)
-        env.load(game_file)
+
+        with pytest.warns(jericho.UnsupportedGameWarning):
+            env.load(game_file)
+
         game_state = env.reset()
         assert game_state.max_score is None
 
@@ -176,14 +182,14 @@ class TestJerichoEnv(unittest.TestCase):
         assert bkp._seed == env._seed
         assert bkp._jericho == env._jericho
         assert bkp.state == env.state
-        assert bkp.infos == env.infos
+        assert bkp.request_infos == env.request_infos
 
         # Copy after env.reset.
         env.load(self.game_file)
         game_state = env.reset()
         bkp = env.copy()
         assert bkp.gamefile == env.gamefile
-        assert bkp.infos == env.infos
+        assert bkp.request_infos == env.request_infos
         assert bkp._seed == env._seed
         assert bkp._jericho != env._jericho  # Not the same object.
         assert_jericho_state_equals(bkp._jericho.get_state(),

@@ -160,7 +160,7 @@ class TestInform7Data(unittest.TestCase):
         # Copy before env.reset.
         env = self.env_z8.copy()
         assert env.state == self.env_z8.state
-        assert env.infos == self.env_z8.infos
+        assert env.request_infos == self.env_z8.request_infos
         assert env._tracked_infos == self.env_z8._tracked_infos
         assert env._prev_state == self.env_z8._prev_state
 
@@ -168,7 +168,7 @@ class TestInform7Data(unittest.TestCase):
         self.env_z8.reset()
         env = self.env_z8.copy()
         assert sorted(env.state.items()) == sorted(self.env_z8.state.items())
-        assert env.infos == self.env_z8.infos
+        assert env.request_infos == self.env_z8.request_infos
         assert env._tracked_infos == self.env_z8._tracked_infos
         assert env._prev_state == self.env_z8._prev_state
 
@@ -196,7 +196,7 @@ class TestTWInform7(unittest.TestCase):
         cls.game, cls.gamefile_ulx = testing.build_and_compile_game(cls.options)
         cls.options.path = pjoin(cls.tmpdir, "tw-game.z8")
         cls.gamefile_z8 = textworld.generator.compile_game(cls.game, cls.options)
-        cls.infos = EnvInfos(
+        cls.request_infos = EnvInfos(
             inventory=True,
             description=True,
             score=True,
@@ -237,7 +237,7 @@ class TestTWInform7(unittest.TestCase):
         # Copy before env.reset.
         env = self.env_z8.copy()
         assert env.state == self.env_z8.state
-        assert env.infos == self.env_z8.infos
+        assert env.request_infos == self.env_z8.request_infos
         assert env._tracked_infos == self.env_z8._tracked_infos
         assert env._prev_state == self.env_z8._prev_state
 
@@ -245,7 +245,7 @@ class TestTWInform7(unittest.TestCase):
         self.env_z8.reset()
         env = self.env_z8.copy()
         assert sorted(env.state.items()) == sorted(self.env_z8.state.items())
-        assert env.infos == self.env_z8.infos
+        assert env.request_infos == self.env_z8.request_infos
         assert env._tracked_infos == self.env_z8._tracked_infos
         assert env._prev_state == self.env_z8._prev_state
 
@@ -291,7 +291,7 @@ class TestGameData(unittest.TestCase):
         cls.game, cls.gamefile_ulx = testing.build_and_compile_game(cls.options)
         cls.options.path = pjoin(cls.tmpdir, "tw-game.z8")
         cls.gamefile_z8 = textworld.generator.compile_game(cls.game, cls.options)
-        cls.infos = EnvInfos(
+        cls.request_infos = EnvInfos(
             max_score=True,
             objective=True,
             win_facts=True,
@@ -385,7 +385,7 @@ class TestStateTracking(unittest.TestCase):
         cls.game, cls.gamefile_ulx = testing.build_and_compile_game(cls.options)
         cls.options.path = pjoin(cls.tmpdir, "tw-game.z8")
         cls.gamefile_z8 = textworld.generator.compile_game(cls.game, cls.options)
-        cls.infos = EnvInfos(
+        cls.request_infos = EnvInfos(
             facts=True,
             policy_commands=True,
             admissible_commands=True,

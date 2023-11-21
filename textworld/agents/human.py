@@ -40,8 +40,8 @@ class HumanAgent(Agent):
             env.request_infos.admissible_commands = True
 
         if self.oracle:
-            env.request_infos.infos.policy_commands = True
-            env.request_infos.infos.intermediate_reward = True
+            env.request_infos.policy_commands = True
+            env.request_infos.intermediate_reward = True
 
     def act(self, game_state, reward, done):
         if (self.oracle and game_state["policy_commands"] and not done):
