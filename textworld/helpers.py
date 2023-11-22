@@ -16,19 +16,18 @@ from textworld.agents import HumanAgent
 from textworld.generator import make_game, compile_game
 
 
-def start(path: str, infos: Optional[EnvInfos] = None,
+def start(path: str, request_infos: Optional[EnvInfos] = None,
           wrappers: List[callable] = []) -> Environment:
     """ Starts a TextWorld environment to play a game.
 
     Arguments:
         path: Path to the game file.
-        infos:
+        request_infos:
             For customizing the information returned by this environment
             (see
             :py:class:`textworld.EnvInfos <textworld.core.EnvInfos>`
             for the list of available information).
         wrappers: List of wrappers to apply to the environment.
-        kwargs: Extra arguments for `env.load`.
 
     Returns:
         TextWorld environment running the provided game.
@@ -41,7 +40,7 @@ def start(path: str, infos: Optional[EnvInfos] = None,
 
     # Guess the backend from the extension.
     Env = textworld.envs._guess_backend(path)
-    env = Env(infos)
+    env = Env(request_infos)
 
     if TWInform7.compatible(path):
         wrappers = [TWInform7] + list(wrappers)
