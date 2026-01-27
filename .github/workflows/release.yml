@@ -47,7 +47,7 @@ jobs:
           CIBW_BUILD_VERBOSITY: 1
 
           # Retag to py3-none-<platform>
-          CIBW_REPAIR_WHEEL_COMMAND: "python tools/retag_wheel_py3-none.py {wheel}"
+          CIBW_REPAIR_WHEEL_COMMAND: "python tools/retag_wheel_py3-none.py -w {dest_dir} {wheel}"
         with:
           output-dir: wheelhouse
 
