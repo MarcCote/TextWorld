@@ -137,7 +137,7 @@ class Inform7Data(textworld.core.Wrapper):
             if self.state[info] is not None and type(self.state[info]) is not int:
                 try:
                     self.state[info] = int(self.state[info].strip())
-                except:
+                except ValueError:
                     self.state[info] = int(self.state[info].strip().split("\n")[0])
 
         self.state["won"] = '*** The End ***' in self.state["feedback"]
